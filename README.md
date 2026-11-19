@@ -10,6 +10,10 @@
 
 ![Custom Theme 卡片在设置 › 外观里](docs/screenshot-main.jpg)
 
+整张卡片长这样——壁纸选择、两条透明度滑条、字体选择和代码字体开关：
+
+![Custom Theme 设置面板](docs/screenshot-settings.jpg)
+
 > **关于截图**：右下角那只哈基米猫娘桌宠是另一个独立插件
 > （[Antigravity Observer](https://github.com/yunjuanyunshu114-byte/antigravity-observer)），
 > **不属于本插件**。本插件只负责背景、透明度和字体。
@@ -157,6 +161,11 @@ transparency** and **your own font** — all from **Settings → Appearance**, w
 no debug port and no background daemon.
 
 ![The Custom Theme card in Settings › Appearance](docs/screenshot-main.jpg)
+
+The whole card looks like this — wallpaper picker, both transparency sliders,
+font picker and the code-font switch:
+
+![The Custom Theme panel](docs/screenshot-settings.jpg)
 
 > **About the screenshot**: the catgirl desktop pet in the bottom-right corner is a
 > separate plugin ([Antigravity Observer](https://github.com/yunjuanyunshu114-byte/antigravity-observer))
