@@ -1,0 +1,14 @@
+{
+  "name": "agy-custom-theme",
+  "displayName": "Antigravity Custom Theme",
+  "version": "1.0.0",
+  "description": "Wallpaper background, adjustable panel transparency and a custom font for Antigravity, configured right inside Settings > Appearance.",
+  "author": {
+    "name": "built for this machine"
+  },
+  "suggestedPrompts": [
+    "Change my Antigravity wallpaper",
+    "Make the sidebar more transparent",
+    "Use my own font in Antigravity"
+  ]
+}
