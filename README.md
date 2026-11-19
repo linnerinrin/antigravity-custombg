@@ -1,5 +1,10 @@
 # Antigravity Custom Theme
 
+![version](https://img.shields.io/badge/version-v1.0.0-6366f1?style=flat-square)
+![Antigravity](https://img.shields.io/badge/Antigravity-2.x-8b5cf6?style=flat-square)
+![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-10b981?style=flat-square)
+![License](https://img.shields.io/badge/License-MIT-3b82f6?style=flat-square)
+
 给 Antigravity 桌面版换上**壁纸背景**、**可调透明度**和**你自己的字体**——全部在
 **设置 → 外观**里操作，不需要开调试端口，也不需要常驻守护进程。
 
@@ -29,11 +34,23 @@ cd antigravity-custombg
 
 ## 安装
 
-需要 **Node.js 18+**，Windows x64 上的 Antigravity 2.x。
+需要 **Node.js 18+**。
 
-1. 双击 **`安装.bat`**。
-2. 等 Antigravity 自动重启。
-3. 打开 **设置 → 外观**，滑到最下面的 **Custom Theme** 卡片。
+| 平台 | 安装 | 卸载 |
+| --- | --- | --- |
+| Windows | 双击 `安装.bat` | 双击 `卸载.bat` |
+| macOS / Linux | `./安装.sh` | `./卸载.sh` |
+
+如果脚本没找到应用（装在了非常规路径），直接指定归档位置：
+
+```bash
+node lib/patcher.cjs --install --asar "/你的路径/resources/app.asar"
+```
+
+也可以设环境变量 `ANTIGRAVITY_ASAR`，命令行会优先读它。
+
+1. 等 Antigravity 自动重启。
+2. 打开 **设置 → 外观**，滑到最下面的 **Custom Theme** 卡片。
 
 安装脚本会：
 
@@ -47,14 +64,15 @@ cd antigravity-custombg
 
 ## 卸载
 
-双击 **`卸载.bat`**，或者：
+Windows 双击 **`卸载.bat`**，macOS/Linux 跑 `./卸载.sh`，或者直接：
 
 ```bash
 node lib/patcher.cjs --uninstall
 ```
 
 它会从备份恢复 `app.asar`。你的壁纸、字体和滑块数值都留在
-`%USERPROFILE%\.gemini\config\agy-bg\`，删掉那个目录才是彻底重置。
+`%USERPROFILE%\.gemini\config\agy-bg\`（macOS/Linux 上是 `~/.gemini/config/agy-bg`），
+删掉那个目录才是彻底重置。
 
 ## 命令行
 
@@ -114,8 +132,11 @@ Antigravity 的顶部菜单复用了 `bg-sidebar` 这个类，而它**父级的�
 
 ## 兼容性
 
-针对 **Antigravity 2.33.0**（Electron 44.9.1 / Chrome 152）开发并验证。补丁只往两个
-JS 文件末尾追加，小版本升级通常没事；大版本升级后跑一下 `--check`。
+针对 **Antigravity 2.33.0**（Electron 44.9.1 / Chrome 152）**在 Windows 上**开发并验证。
+补丁本身只往两个 JS 文件末尾追加，注入代码用的全是 Electron 的跨平台 API
+（`nativeImage` / `dialog` / `shell` / `os.homedir`），所以 macOS 和 Linux 的代码路径
+是照着同样的结构写的——**但那两个平台没有实机跑过**。如果你在上面跑出了问题，
+带上 `node lib/patcher.cjs --check` 的输出开个 issue。
 
 可以和 Gemini Neko Cockpit 猫娘 HUD 插件共存——它用的是自己的
 `GEMINI_NEKO_HUD_BEGIN/END` 标记，两块互不干扰。重装或修复 Antigravity 会把两个补丁
@@ -163,11 +184,24 @@ turns into a white sheet over white text.
 
 ## Install
 
-Requirements: **Node.js 18+**, Antigravity 2.x on Windows x64.
+Requirements: **Node.js 18+**.
 
-1. Double-click **`安装.bat`** (Install).
-2. Wait for Antigravity to restart.
-3. Open **Settings → Appearance** and scroll to the **Custom Theme** card.
+| Platform | Install | Uninstall |
+| --- | --- | --- |
+| Windows | double-click `安装.bat` | double-click `卸载.bat` |
+| macOS / Linux | `./安装.sh` | `./卸载.sh` |
+
+If the scripts cannot find the app (unusual install location), point them at the
+archive yourself:
+
+```bash
+node lib/patcher.cjs --install --asar "/your/path/resources/app.asar"
+```
+
+`ANTIGRAVITY_ASAR` in the environment works too and takes priority.
+
+1. Wait for Antigravity to restart.
+2. Open **Settings → Appearance** and scroll to the **Custom Theme** card.
 
 The installer:
 
@@ -182,15 +216,15 @@ Any failure leaves the running app untouched.
 
 ## Uninstall
 
-Double-click **`卸载.bat`** (Uninstall), or:
+Double-click `卸载.bat` on Windows, run `./卸载.sh` on macOS/Linux, or:
 
 ```bash
 node lib/patcher.cjs --uninstall
 ```
 
 This restores `app.asar` from the backup. Your wallpapers, fonts and slider
-values stay in `%USERPROFILE%\.gemini\config\agy-bg\` — delete that folder to
-reset them completely.
+values stay in `~/.gemini/config/agy-bg` — delete that folder to reset them
+completely.
 
 ## Command line
 
@@ -258,9 +292,12 @@ blurred twice and washes out.
 
 ## Compatibility
 
-Built and verified against **Antigravity 2.33.0**
-(Electron 44.9.1 / Chrome 152). The patch only appends to two JavaScript files,
-so minor version bumps are usually fine; run `--check` after a major update.
+Built and verified against **Antigravity 2.33.0** (Electron 44.9.1 / Chrome 152)
+**on Windows**. The patch only appends to two JavaScript files and the injected
+code uses nothing but cross-platform Electron APIs (`nativeImage`, `dialog`,
+`shell`, `os.homedir`), so the macOS and Linux code paths follow the same shape
+— **but neither platform has been tested on real hardware**. If you run into
+trouble there, open an issue with the output of `node lib/patcher.cjs --check`.
 
 It coexists with the Gemini Neko Cockpit HUD plugin — that one uses its own
 `GEMINI_NEKO_HUD_BEGIN/END` markers and the two blocks never touch each other.
