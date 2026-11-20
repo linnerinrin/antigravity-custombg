@@ -152,6 +152,25 @@
         ].join('');
       }
 
+      // Every popup the app renders, in one place. Miss one here and its light palette
+      // bleeds into the dark theme: the delete/archive dialogs were exactly that bug.
+      const OVERLAY_SEL = [
+        '.surface-opaque',
+        '[role=menu]', '[role=listbox]', '[role=dialog]', '[role=alertdialog]',
+        '[data-radix-popper-content-wrapper] > *',
+        '.absolute.top-full',
+        '.toast-root', '.agy-toast',
+        '.agy-dialog', '.agy-tip-card',
+        '.gn-modal-card', '.gn-modal-body', '.gn-modal-head',
+        '.toolbar-overflow-dropdown',
+        '.quick-input-widget', '.agy-fastpick'
+      ].join(',');
+      const OVERLAY_SEL_DARK = OVERLAY_SEL.split(',').map(function (sel) {
+        // The popper child and the top-full popups need the body prefix only, not a
+        // second descendant hop, so repeat the selector for each dark body state.
+        return 'body.dark ' + sel + ',body.dark-theme ' + sel + ',body.theme-dark ' + sel;
+      }).join(',');
+
       const css = [
         // ---- Light (default) ----
         ':root,body{' + paletteVars(L) + '}',
@@ -174,9 +193,9 @@
         'background-color:rgba(' + L.tint + ',' + sbA + ') !important;',
         'backdrop-filter:blur(' + sbBlur + 'px) saturate(' + sbSat + '%) !important;}',
         // Dropdown menus reuse the bg-sidebar class; keep them solid so items stay readable.
-        '.surface-opaque,[role=menu],[role=listbox],[role=dialog],',
-        '[data-radix-popper-content-wrapper] > *,',
-        '.absolute.top-full{background-color:rgba(' + L.tint2 + ',.97) !important;backdrop-filter:none !important;}',
+        // Every overlay surface the app uses is listed here so the light palette never
+        // leaks into a dark window: menus, listboxes, dialogs, toasts, tip cards, modals.
+        OVERLAY_SEL + '{background-color:rgba(' + L.tint2 + ',.97) !important;backdrop-filter:none !important;}',
         '.surface-composer-card{background-color:rgba(' + L.tint2 + ',' + t.composer + ') !important;backdrop-filter:blur(10px);}',
         '.agy-sheet{text-shadow:0 1px 2px rgba(255,255,255,.55);}',
 
@@ -202,10 +221,7 @@
         'body.theme-dark .h-full.w-full.flex.flex-col.bg-sidebar{',
         'background-color:rgba(' + D.tint + ',' + sbA + ') !important;',
         'backdrop-filter:blur(' + sbBlur + 'px) saturate(' + sbSat + '%) !important;}',
-        'body.dark .surface-opaque,body.dark [role=menu],body.dark [role=listbox],',
-        'body.dark-theme .surface-opaque,body.theme-dark .surface-opaque,',
-        'body.dark [data-radix-popper-content-wrapper] > *,',
-        'body.dark .absolute.top-full,body.dark-theme .absolute.top-full,body.theme-dark .absolute.top-full{',
+        OVERLAY_SEL_DARK + '{',
         'background-color:rgba(' + D.tint2 + ',.97) !important;backdrop-filter:none !important;}',
         'body.dark .surface-composer-card,body.dark-theme .surface-composer-card,body.theme-dark .surface-composer-card{',
         'background-color:rgba(' + D.tint2 + ',' + t.composer + ') !important;}',

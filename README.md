@@ -122,6 +122,13 @@ Antigravity 的顶部菜单复用了 `bg-sidebar` 这个类，而它**父级的�
 所以工具条只拿背景色，`backdrop-filter` 只加给真正的侧边栏列——否则弹层会被糊两遍，
 直接洗白。
 
+### 弹窗
+
+菜单、下拉框、对话框、Toast、Modal 全部收在同一个 `OVERLAY_SEL` 选择器里，明暗两套
+配色各引用它一次。早先深色分支只写了菜单和列表而漏了 `[role=dialog]`，于是删除会话、
+归档会话的确认框仍然是白色底——但文字已经跟着主题变成白色，正好是「白底白字看不见」。
+新增一个选择器就够，漏一个就复发，所以两个分支必须共用同一个常量。
+
 ## 配置文件
 
 ```
@@ -285,6 +292,15 @@ Antigravity's top menus reuse the `bg-sidebar` class, and their *parent* toolbar
 carries it too. The toolbar therefore only gets a background colour, while the
 `backdrop-filter` is limited to the real sidebar column — otherwise the popup is
 blurred twice and washes out.
+
+### Popups
+
+Menus, dropdowns, dialogs, toasts and modals all live in one `OVERLAY_SEL`
+selector that both palettes reference. The dark block originally listed menus and
+listboxes but not `[role=dialog]`, so the delete/archive confirmation boxes kept
+their light background while the text had already turned white — white on white.
+Add one selector and it is covered; miss one and it regresses, which is why both
+branches share the same constant.
 
 ## Configuration files
 
