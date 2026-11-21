@@ -61,6 +61,9 @@
     const SANS_FB = 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Microsoft YaHei", sans-serif';
     const MONO_FB = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
     let _fontCache = { key: '', css: '' };
+    // Wallpaper base64 cache. Without it every slider tick re-read + re-encoded the
+    // whole image, and the 26 MB CSS string was rebuilt and shipped over IPC.
+    let _imgCache = { key: '', uri: '' };
 
     function fontCss(cfg) {
       const f = cfg && cfg.fontFile;
@@ -94,42 +97,70 @@
       return css;
     }
 
+    // Everything the sliders control is emitted as a CSS variable, so dragging one
+    // ships a dozen bytes instead of rebuilding and re-parsing the whole stylesheet.
+    function tuneVars(cfg) {
+      const dim = typeof cfg.dimming === 'number' ? Math.max(0, Math.min(100, cfg.dimming)) : 57;
+      const t = alphaTriple(dim);
+      const sbTrans = typeof cfg.sidebarTrans === 'number'
+        ? Math.max(0, Math.min(100, cfg.sidebarTrans)) : 0;
+      const veil = typeof cfg.veil === 'number' ? Math.max(0, Math.min(100, cfg.veil)) : 8;
+      return {
+        surface: t.surface,
+        surface2: t.surface2,
+        composer: t.composer,
+        sbA: sidebarAlpha(sbTrans),
+        sbBlur: Math.max(3, Math.round(16 - (sbTrans / 100) * 11)),
+        sbSat: Math.round(120 + (sbTrans / 100) * 20),
+        veilA: (veil / 100 * 0.5).toFixed(3)
+      };
+    }
+
+    // Only these keys change the small tune block; everything else needs a full rebuild.
+    const TUNE_KEYS = ['dimming', 'sidebarTrans', 'veil'];
+
+    function tuneCss(cfg) {
+      const v = tuneVars(cfg);
+      return ':root{' +
+        '--agy-sa:' + v.surface + ';' +
+        '--agy-sa2:' + v.surface2 + ';' +
+        '--agy-ca:' + v.composer + ';' +
+        '--agy-sba:' + v.sbA + ';' +
+        '--agy-sbfilter:blur(' + v.sbBlur + 'px) saturate(' + v.sbSat + '%);' +
+        '--agy-veil:' + v.veilA + ';' +
+        '}';
+    }
+
+    function imageUri(cfg) {
+      if (/^data:/i.test(cfg.image)) return cfg.image;
+      if (/^https?:\/\//i.test(cfg.image)) return cfg.image;
+      const img = resolveImg(cfg);
+      if (!img) return null;
+      let st = null;
+      try { st = fs.statSync(img); } catch (e) { return null; }
+      const key = img + '|' + st.mtimeMs + '|' + st.size;
+      if (_imgCache.key === key) return _imgCache.uri;
+      try {
+        const mime = MIME[path.extname(img).toLowerCase()] || 'image/jpeg';
+        const uri = 'data:' + mime + ';base64,' + fs.readFileSync(img).toString('base64');
+        _imgCache = { key: key, uri: uri };
+        return uri;
+      } catch (e) { return null; }
+    }
+
     function build() {
       const cfg = readCfg();
       const fontPart = fontCss(cfg);
       if (cfg.enabled === false) return fontPart || null;
       if (!cfg.image) return fontPart || null;
 
-      let uri = null;
-      if (/^data:/i.test(cfg.image)) {
-        uri = cfg.image;
-      } else if (/^https?:\/\//i.test(cfg.image)) {
-        uri = cfg.image;
-      } else {
-        const img = resolveImg(cfg);
-        if (!img) return null;
-        try {
-          const mime = MIME[path.extname(img).toLowerCase()] || 'image/jpeg';
-          uri = 'data:' + mime + ';base64,' + fs.readFileSync(img).toString('base64');
-        } catch (e) { return null; }
-      }
+      const uri = imageUri(cfg);
+      if (!uri) return null;
 
       const v = function (k, d) {
         return cfg[k] !== undefined && cfg[k] !== null ? cfg[k] : d;
       };
-      // Only alphas are computed here; color literals are emitted per theme below.
-      // Referencing a shared var from :root does not work: it resolves at :root.
-      const dim = typeof cfg.dimming === 'number' ? Math.max(0, Math.min(100, cfg.dimming)) : 57;
-      const t = alphaTriple(dim);
-      const sbTrans = typeof cfg.sidebarTrans === 'number'
-        ? Math.max(0, Math.min(100, cfg.sidebarTrans)) : 0;
-      const sbA = sidebarAlpha(sbTrans);
-      const sbBlur = Math.max(3, Math.round(16 - (sbTrans / 100) * 11));
-      const sbSat = Math.round(120 + (sbTrans / 100) * 20);
       const blur = v('blur', 'blur(2px)');
-      // Optional veil strength (0-100), theme independent.
-      const veil = typeof cfg.veil === 'number' ? Math.max(0, Math.min(100, cfg.veil)) : 8;
-      const veilA = (veil / 100 * 0.5).toFixed(3);
 
       // Both palettes are emitted as literals: a var used inside :root is resolved
       // there, so toggling .dark on body cannot change the computed --background.
@@ -138,15 +169,15 @@
 
       function paletteVars(p) {
         return [
-          '--background:rgba(' + p.tint + ',' + t.surface + ') !important;',
-          '--card:rgba(' + p.tint2 + ',' + t.surface2 + ') !important;',
+          '--background:rgba(' + p.tint + ',var(--agy-sa)) !important;',
+          '--card:rgba(' + p.tint2 + ',var(--agy-sa2)) !important;',
           '--popover:rgba(' + p.tint2 + ',.97) !important;',
           '--muted:rgba(' + p.ink + ',.06) !important;',
           '--secondary:rgba(' + p.ink + ',.10) !important;',
           '--accent:rgba(' + p.ink + ',.08) !important;',
           '--input:rgba(' + p.ink + ',.08) !important;',
           '--border:rgba(' + p.ink + ',.14) !important;',
-          '--sidebar:rgba(' + p.tint + ',' + sbA + ') !important;',
+          '--sidebar:rgba(' + p.tint + ',var(--agy-sba)) !important;',
           '--sidebar-accent:rgba(' + p.ink + ',.08) !important;',
           '--sidebar-border:rgba(' + p.ink + ',.10) !important;'
         ].join('');
@@ -157,46 +188,70 @@
       const OVERLAY_SEL = [
         '.surface-opaque',
         '[role=menu]', '[role=listbox]', '[role=dialog]', '[role=alertdialog]',
+        '[role=tooltip]', '[role=listoption]',
         '[data-radix-popper-content-wrapper] > *',
         '.absolute.top-full',
         '.toast-root', '.agy-toast',
-        '.agy-dialog', '.agy-tip-card',
+        '.agy-overlay', '.agy-dialog', '.agy-tip-card', '.agy-menu',
         '.gn-modal-card', '.gn-modal-body', '.gn-modal-head',
         '.toolbar-overflow-dropdown',
-        '.quick-input-widget', '.agy-fastpick'
+        '.quick-input-widget', '.agy-fastpick',
+        '.monaco-hover', '.context-view', '.monaco-menu'
       ].join(',');
-      const OVERLAY_SEL_DARK = OVERLAY_SEL.split(',').map(function (sel) {
-        // The popper child and the top-full popups need the body prefix only, not a
-        // second descendant hop, so repeat the selector for each dark body state.
-        return 'body.dark ' + sel + ',body.dark-theme ' + sel + ',body.theme-dark ' + sel;
-      }).join(',');
+      const DARK_BODIES = ['body.dark', 'body.dark-theme', 'body.theme-dark'];
+      // Expand one selector list into "as-is" + every dark body state. Both palettes are
+      // built from the same expanded lists, so a rule can never land in one theme only —
+      // that drift is exactly what left the delete/archive dialogs white-on-white.
+      function expandDark(sel) {
+        const parts = sel.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+        const out = [];
+        parts.forEach(function (p) {
+          DARK_BODIES.forEach(function (body) { out.push(body + ' ' + p); });
+        });
+        return out.join(',');
+      }
+      const OVERLAY_SEL_DARK = expandDark(OVERLAY_SEL);
+
+      // Sidebar column: painted everywhere, blurred only where it is the real column.
+      const SIDEBAR_PAINT = [
+        '.bg-sidebar:not(.surface-opaque)',
+        '.bg-sidebar .bg-sidebar:not(.surface-opaque)',
+        '[class*="bg-sidebar"]:not(.bg-sidebar-accent):not(.surface-opaque)'
+      ].join(',');
+      const SIDEBAR_BLUR = [
+        'aside.bg-sidebar',
+        'aside [class*="bg-sidebar"]:not(.surface-opaque)',
+        '.pb-2.bg-sidebar',
+        '.h-full.w-full.flex.flex-col.bg-sidebar'
+      ].join(',');
+      const SIDEBAR_PAINT_DARK = expandDark(SIDEBAR_PAINT);
+      const SIDEBAR_BLUR_DARK = expandDark(SIDEBAR_BLUR);
 
       const css = [
+        // Slider-driven values live in vars so tuning never rebuilds this stylesheet.
+        tuneCss(cfg),
         // ---- Light (default) ----
         ':root,body{' + paletteVars(L) + '}',
         'html,body{background:transparent !important;}',
         'body::before{',
         "content:'';position:fixed;inset:0;z-index:0;pointer-events:none;",
-        'background-image:linear-gradient(rgba(' + L.tint + ',' + veilA + '),rgba(' + L.tint + ',' + veilA + ')),',
-        'radial-gradient(ellipse 70% 55% at 50% 42%,rgba(' + L.tint2 + ',' + veilA + '),transparent 78%),',
+        'background-image:linear-gradient(rgba(' + L.tint + ',var(--agy-veil)),rgba(' + L.tint + ',var(--agy-veil))),',
+        'radial-gradient(ellipse 70% 55% at 50% 42%,rgba(' + L.tint2 + ',var(--agy-veil)),transparent 78%),',
         'url("' + uri + '");',
         'background-size:cover,cover,cover;background-position:center,center,center;',
         'background-repeat:no-repeat,no-repeat,no-repeat;',
         '}',
-        '.bg-sidebar:not(.surface-opaque),.bg-sidebar .bg-sidebar:not(.surface-opaque),',
-        '[class*="bg-sidebar"]:not(.bg-sidebar-accent):not(.surface-opaque){',
-        'background-color:rgba(' + L.tint + ',' + sbA + ') !important;}',
+        SIDEBAR_PAINT + '{background-color:rgba(' + L.tint + ',var(--agy-sba)) !important;}',
         // Blur only on the real sidebar column. The top titlebar also carries bg-sidebar and
         // is the dropdown menu's parent: a backdrop-filter there double-fuzzes the popup.
-        'aside.bg-sidebar,aside [class*="bg-sidebar"]:not(.surface-opaque),',
-        '.pb-2.bg-sidebar,.h-full.w-full.flex.flex-col.bg-sidebar{',
-        'background-color:rgba(' + L.tint + ',' + sbA + ') !important;',
-        'backdrop-filter:blur(' + sbBlur + 'px) saturate(' + sbSat + '%) !important;}',
+        SIDEBAR_BLUR + '{',
+        'background-color:rgba(' + L.tint + ',var(--agy-sba)) !important;',
+        'backdrop-filter:var(--agy-sbfilter) !important;}',
         // Dropdown menus reuse the bg-sidebar class; keep them solid so items stay readable.
         // Every overlay surface the app uses is listed here so the light palette never
         // leaks into a dark window: menus, listboxes, dialogs, toasts, tip cards, modals.
         OVERLAY_SEL + '{background-color:rgba(' + L.tint2 + ',.97) !important;backdrop-filter:none !important;}',
-        '.surface-composer-card{background-color:rgba(' + L.tint2 + ',' + t.composer + ') !important;backdrop-filter:blur(10px);}',
+        '.surface-composer-card{background-color:rgba(' + L.tint2 + ',var(--agy-ca)) !important;backdrop-filter:blur(10px);}',
         '.agy-sheet{text-shadow:0 1px 2px rgba(255,255,255,.55);}',
 
         // ---- Dark: emitted after the light block, with :has() to win the cascade ----
@@ -206,25 +261,18 @@
         '--agy-ink:255,255,255;',
         '}',
         'body.dark::before,body.dark-theme::before,body.theme-dark::before{',
-        'background-image:linear-gradient(rgba(' + D.tint + ',' + veilA + '),rgba(' + D.tint + ',' + veilA + ')),',
-        'radial-gradient(ellipse 70% 55% at 50% 42%,rgba(' + D.tint2 + ',' + veilA + '),transparent 78%),',
+        'background-image:linear-gradient(rgba(' + D.tint + ',var(--agy-veil)),rgba(' + D.tint + ',var(--agy-veil))),',
+        'radial-gradient(ellipse 70% 55% at 50% 42%,rgba(' + D.tint2 + ',var(--agy-veil)),transparent 78%),',
         'url("' + uri + '");',
         '}',
-        'body.dark .bg-sidebar:not(.surface-opaque),',
-        'body.dark [class*="bg-sidebar"]:not(.bg-sidebar-accent):not(.surface-opaque),',
-        'body.dark aside.bg-sidebar,body.dark-theme aside.bg-sidebar,body.theme-dark aside.bg-sidebar{',
-        'background-color:rgba(' + D.tint + ',' + sbA + ') !important;',
-        '}',
-        'body.dark .pb-2.bg-sidebar,body.dark-theme .pb-2.bg-sidebar,body.theme-dark .pb-2.bg-sidebar,',
-        'body.dark .h-full.w-full.flex.flex-col.bg-sidebar,',
-        'body.dark-theme .h-full.w-full.flex.flex-col.bg-sidebar,',
-        'body.theme-dark .h-full.w-full.flex.flex-col.bg-sidebar{',
-        'background-color:rgba(' + D.tint + ',' + sbA + ') !important;',
-        'backdrop-filter:blur(' + sbBlur + 'px) saturate(' + sbSat + '%) !important;}',
+        SIDEBAR_PAINT_DARK + '{background-color:rgba(' + D.tint + ',var(--agy-sba)) !important;}',
+        SIDEBAR_BLUR_DARK + '{',
+        'background-color:rgba(' + D.tint + ',var(--agy-sba)) !important;',
+        'backdrop-filter:var(--agy-sbfilter) !important;}',
         OVERLAY_SEL_DARK + '{',
         'background-color:rgba(' + D.tint2 + ',.97) !important;backdrop-filter:none !important;}',
         'body.dark .surface-composer-card,body.dark-theme .surface-composer-card,body.theme-dark .surface-composer-card{',
-        'background-color:rgba(' + D.tint2 + ',' + t.composer + ') !important;}',
+        'background-color:rgba(' + D.tint2 + ',var(--agy-ca)) !important;}',
         'body.dark .agy-sheet,body.dark-theme .agy-sheet,body.theme-dark .agy-sheet{',
         'text-shadow:0 1px 2px rgba(0,0,0,.45);}',
 
@@ -329,8 +377,19 @@
       try {
         const cfg = readCfg();
         const patch = arg || {};
+        const keys = Object.keys(patch);
+        // Sliders only touch tune keys: reply with the tiny var block instead of the
+        // full stylesheet (font + wallpaper base64 made that a 26 MB round trip).
+        const tuneOnly = keys.length > 0 && keys.every(function (k) {
+          // The sliders also send enabled:true alongside the value they drag.
+          if (k === 'enabled') return patch[k] === true;
+          return TUNE_KEYS.indexOf(k) >= 0;
+        });
         Object.keys(patch).forEach(function (k) { cfg[k] = patch[k]; });
         writeCfg(cfg);
+        if (tuneOnly && cfg.enabled !== false && cfg.image) {
+          return { ok: true, tune: tuneCss(cfg), tuneOnly: true };
+        }
         return { ok: true, css: build() };
       } catch (e) { return { ok: false, error: String(e) }; }
     });

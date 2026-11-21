@@ -10,6 +10,7 @@
     if (!ipcRenderer) return;
 
     const SID = '__agy_bg_style__';
+    const TID = '__agy_bg_tune__';
     const SEC = '__agy_bg_section__';
 
     function inject(css) {
@@ -28,9 +29,33 @@
       if (st.textContent !== css) st.textContent = css;
     }
 
+    // Slider tuning is a ~200 byte var block, kept in its own style tag so the huge
+    // base stylesheet (font + wallpaper base64) never has to be re-parsed.
+    function injectTune(css) {
+      const host = document.head || document.documentElement;
+      if (!host) return;
+      let st = document.getElementById(TID);
+      if (!css) {
+        if (st) st.remove();
+        return;
+      }
+      if (!st) {
+        st = document.createElement('style');
+        st.id = TID;
+        host.appendChild(st);
+      }
+      if (st.textContent !== css) st.textContent = css;
+    }
+
+    // A full rebuild carries the tune vars too, so drop the override tag.
+    function injectFull(css) {
+      injectTune('');
+      inject(css);
+    }
+
     function refresh() {
       try {
-        ipcRenderer.invoke('agy-bg:get-css').then(inject).catch(function () {});
+        ipcRenderer.invoke('agy-bg:get-css').then(injectFull).catch(function () {});
       } catch (e) {}
     }
 
@@ -169,7 +194,7 @@
             fbtn.disabled = false;
             fbtn.textContent = 'Choose font…';
             if (r && r.ok) {
-              inject(r.css);
+              injectFull(r.css);
               if (fh) fh.textContent = r.fontName || r.fontFile || '已设置';
             }
           }).catch(function () {
@@ -182,7 +207,7 @@
         fclr.addEventListener('click', function () {
           ipcRenderer.invoke('agy-bg:set-option', { fontFile: null }).then(function (r) {
             if (r && r.ok) {
-              inject(r.css || '');
+              injectFull(r.css || '');
               if (fh) fh.textContent = '未设置，用自带字体';
             }
           }).catch(function () {});
@@ -191,14 +216,14 @@
       if (fcode) {
         fcode.addEventListener('change', function () {
           ipcRenderer.invoke('agy-bg:set-option', { fontApplyCode: fcode.checked }).then(function (r) {
-            if (r && r.ok) inject(r.css || '');
+            if (r && r.ok) injectFull(r.css || '');
           }).catch(function () {});
         });
       }
 
       on.addEventListener('change', function () {
         ipcRenderer.invoke('agy-bg:set-option', { enabled: on.checked })
-          .then(function (r) { if (r && r.ok) inject(r.css); })
+          .then(function (r) { if (r && r.ok) injectFull(r.css); })
           .catch(function () {});
       });
 
@@ -211,7 +236,12 @@
 
       function paint(r) {
         if (!r || !r.ok) return;
-        inject(r.css);
+        if (r.tuneOnly && r.tune) {
+          // The var block only decorates an already-injected stylesheet; if there is
+          // none yet (enabled flipped on while dragging), pull the full CSS once.
+          if (document.getElementById(SID)) injectTune(r.tune);
+          else refresh();
+        } else if (r.css) injectFull(r.css);
         const cb = sec.querySelector('#__agy_bg_on');
         if (cb) cb.checked = true;
       }
@@ -276,7 +306,7 @@
           pick.disabled = false;
           pick.textContent = 'Choose…';
           if (r && r.ok) {
-            inject(r.css);
+            injectFull(r.css);
             if (r.preview && thumb) {
               thumb.src = r.preview;
               thumb.style.display = 'block';
